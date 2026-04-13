@@ -1,0 +1,8 @@
+{
+  "task_id": "test_200019",
+  "from": "bingbu",
+  "status": "done",
+  "risk_level": "low",
+  "main_blocker": "无实质阻力",
+  "strategy": "身份确认请求，直接响应"
+}

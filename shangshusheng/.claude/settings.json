@@ -1,0 +1,10 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-8c533cff0918cddf39646edcc8beeafd05d656c86199cca945c015b8254ddfc9",
+    "ANTHROPIC_BASE_URL": "https://claude-api.daw111.asia",
+    "ANTHROPIC_MODEL": "GPT5.4"
+  },
+  "apiKey": "sk-8c533cff0918cddf39646edcc8beeafd05d656c86199cca945c015b8254ddfc9",
+  "baseUrl": "https://claude-api.daw111.asia",
+  "model": "GPT5.4"
+}

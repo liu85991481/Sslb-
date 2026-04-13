@@ -1,0 +1,8 @@
+{
+  "routes": {
+    "zhongshusheng": ["menxiasheng", "shangshusheng"],
+    "menxiasheng": [],
+    "shangshusheng": ["libu","hubu","liyibu","bingbu","xingbu","gongbu"],
+    "libu":[],"hubu":[],"liyibu":[],"bingbu":[],"xingbu":[],"gongbu":[]
+  }
+}

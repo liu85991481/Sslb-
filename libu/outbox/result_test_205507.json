@@ -1,0 +1,9 @@
+{
+  "task_id": "test_205507",
+  "from": "libu",
+  "status": "done",
+  "division": "单一查询任务，无需分工，直接响应",
+  "priorities": [
+    "无需排队，即时处理"
+  ]
+}

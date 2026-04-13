@@ -1,0 +1,241 @@
+# 《工部会办意见》
+
+## 任务审查：chain_210718 用户登录系统开发
+
+---
+
+## 1. 实现总体思路
+
+### 1.1 原方案评估
+
+| 维度 | 原方案状态 | 工部判断 |
+|------|-----------|---------|
+| 技术栈选择 | Spring Boot + Vue.js + MySQL + Redis | ✅ 可行，需补充版本号 |
+| 模块划分 | 4大模块框架 | ⚠️ 需细化T4~T6内容 |
+| 接口规范 | 仅标注"定义接口规范" | ❌ 需提供具体API设计 |
+| 安全设计 | 有方向无细节 | ⚠️ 需补充具体算法和阈值 |
+| 交付标准 | 无量化指标 | ⚠️ 需补充验收条件 |
+
+### 1.2 总体实现路径
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                    登录系统实施路径                                 │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  Phase 1: 基础设施搭建（3天）                                       │
+│  ├── 1.1 开发环境配置（含Docker Compose）                          │
+│  ├── 1.2 基础框架脚手架（Spring Boot + MyBatis-Plus）              │
+│  └── 1.3 数据库初始化脚本                                          │
+│                                                                    │
+│  Phase 2: 核心认证（5天）                                          │
+│  ├── 2.1 用户注册（含密码加密）                                    │
+│  ├── 2.2 密码登录                                                  │
+│  ├── 2.3 JWT双令牌发放与验证                                       │
+│  └── 2.4 登出与会话管理                                            │
+│                                                                    │
+│  Phase 3: 增强安全（4天）                                          │
+│  ├── 3.1 登录限流与暴力破解防护                                     │
+│  ├── 3.2 设备指纹采集                                              │
+│  ├── 3.3 IP异常检测                                                │
+│  └── 3.4 审计日志记录                                              │
+│                                                                    │
+│  Phase 4: 扩展认证（3天）                                          │
+│  ├── 4.1 短信验证码登录                                            │
+│  ├── 4.2 第三方OAuth（微信/钉钉）                                   │
+│  └── 4.3 多因素认证（MFA）                                         │
+│                                                                    │
+│  Phase 5: 集成测试与部署（3天）                                    │
+│  └── 全链路压测 + 安全渗透测试 + 部署文档                           │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**预计总工期：18个工作日**
+
+---
+
+## 2. 具体执行步骤
+
+### 2.1 Phase 1 - 基础设施搭建
+
+#### Step 1.1: 开发环境配置
+
+**文件：`docker-compose.yml`**
+```yaml
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0.33
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: login_system
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/login_system
+      SPRING_REDIS_HOST: redis
+
+volumes:
+  mysql_data:
+  redis_data:
+```
+
+#### Step 1.2: 基础框架脚手架
+
+**Maven依赖（`pom.xml`关键片段）：**
+```xml
+<dependencies>
+    <!-- Web框架 -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+        <version>3.2.0</version>
+    </dependency>
+    
+    <!-- 安全框架 -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security</artifactId>
+        <version>3.2.0</version>
+    </dependency>
+    
+    <!-- 数据库 -->
+    <dependency>
+        <groupId>com.baomidou</groupId>
+        <artifactId>mybatis-plus-boot-starter</artifactId>
+        <version>3.5.5</version>
+    </dependency>
+    <dependency>
+        <groupId>com.mysql</groupId>
+        <artifactId>mysql-connector-j</artifactId>
+        <version>8.2.0</version>
+    </dependency>
+    
+    <!-- Redis -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-redis</artifactId>
+        <version>3.2.0</version>
+    </dependency>
+    
+    <!-- JWT -->
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-api</artifactId>
+        <version>0.12.3</version>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-impl</artifactId>
+        <version>0.12.3</version>
+        <scope>runtime</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-jackson</artifactId>
+        <version>0.12.3</version>
+        <scope>runtime</scope>
+    </dependency>
+    
+    <!-- 工具类 -->
+    <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>3.14.0</version>
+    </dependency>
+</dependencies>
+```
+
+---
+
+### 2.2 Phase 2 - 核心认证开发
+
+#### Step 2.1: 用户注册
+
+**Controller层（`UserController.java`）：**
+```java
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+public class AuthController {
+    
+    private final AuthService authService;
+    
+    @PostMapping("/register")
+    public Result<Void> register(@RequestBody @Valid RegisterRequest request) {
+        authService.register(request);
+        return Result.success();
+    }
+    
+    @PostMapping("/login")
+    public Result<LoginResponse> login(@RequestBody @Valid LoginRequest request,
+                                        HttpServletRequest httpRequest) {
+        LoginContext context = LoginContext.builder()
+            .username(request.getUsername())
+            .password(request.getPassword())
+            .ip(getClientIp(httpRequest))
+            .userAgent(httpRequest.getHeader("User-Agent"))
+            .build();
+        
+        LoginResponse response = authService.login(context);
+        return Result.success(response);
+    }
+    
+    @PostMapping("/logout")
+    public Result<Void> logout(@RequestHeader("Authorization") String token) {
+        authService.logout(token);
+        return Result.success();
+    }
+    
+    @PostMapping("/refresh")
+    public Result<LoginResponse> refresh(@RequestBody RefreshRequest request) {
+        LoginResponse response = authService.refreshToken(request.getRefreshToken());
+        return Result.success(response);
+    }
+}
+```
+
+**Service层（`AuthServiceImpl.java`关键方法）：**
+```java
+@Service
+@RequiredArgsConstructor
+public class AuthServiceImpl implements AuthService {
+    
+    private final UserMapper userMapper;
+    private final UserAuthMapper userAuthMapper;
+    private final TokenService tokenService;
+    private final SecurityService securityService;
+    
+    private static final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    
+    @Override
+    @Transactional
+    public void register(RegisterRequest request) {
+        // 1. 校验用户名唯一性
+        if (userMapper.selectByUsername(request.getUsername()) != null) {
+            throw new BusinessException("用户名已存在");
+        }
+        
+        // 2. 校验邮箱唯一性
+        if (userMapper.selectByEmail(request.getEmail()) != null) {
+            throw new Business

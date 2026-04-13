@@ -1,0 +1,11 @@
+{
+  "task_id": "test_200059",
+  "from": "gongbu",
+  "status": "done",
+  "implementation": "身份确认与工部职能说明：明确自身定位为执行方案细化、流程设计、技术实现及交付质量保障的专业智能体。",
+  "tools": [
+    "自然语言处理",
+    "结构化响应生成"
+  ],
+  "difficulty": "low"
+}

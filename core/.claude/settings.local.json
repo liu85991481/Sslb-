@@ -1,0 +1,10 @@
+{
+  "apiKey": "sk-UEnFgw88PWVn6m6BxJTPQYz2PfYCexNgdBcfQHSMl0oiX0Oo",
+  "baseUrl": "https://api.toskaxy.xyz",
+  "model": "gpt-5.4",
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "sk-jo4DU3DGX4UmpHGVyaTcmnJwJCfwg86QvlLdyTXOcdhmlkdA",
+    "ANTHROPIC_BASE_URL": "https://api.toskaxy.xyz",
+    "ANTHROPIC_MODEL": "gpt-5.4"
+  }
+}

@@ -1,0 +1,181 @@
+# 《工部会办意见》
+
+## 1. 实现总体思路
+
+### 技术架构方案
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        客户端层                              │
+│  (Web App / Mobile App / 第三方应用)                         │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTPS
+┌─────────────────────▼───────────────────────────────────────┐
+│                     API Gateway                              │
+│              (Nginx / Kong / AWS API Gateway)                │
+│         [限流] [鉴权] [日志] [路由分发]                        │
+└───────┬─────────┬─────────┬─────────┬─────────┬─────────────┘
+        │         │         │         │         │
+┌───────▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼───┐
+│ 认证服务   │ │用户服务│ │Token服务│ │OAuth服务│ │短信服务│
+│ /auth     │ │/user   │ │/token  │ │/oauth  │ │/sms   │
+└───────┬───┘ └───┬───┘ └───┬───┘ └───┬───┘ └───┬───┘
+        │         │         │         │         │
+┌───────▼─────────▼─────────▼─────────▼─────────▼─────────────┐
+│                        数据层                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│  │用户数据库│  │Redis缓存 │  │消息队列  │  │日志存储  │      │
+│  │PostgreSQL│  │(会话/Token)│ │(异步任务)│  │(Elastic)│      │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 推荐技术栈
+
+| 层级 | 技术选型 | 版本要求 | 说明 |
+|-----|---------|---------|------|
+| **后端框架** | Node.js + Express / NestJS | Node 18+ | 高并发、性能优异 |
+| **数据库** | PostgreSQL | 14+ | 支持JSON、扩展性强 |
+| **缓存** | Redis | 6+ | Token存储、会话管理 |
+| **安全库** | bcrypt / argon2 | 最新 | 密码哈希 |
+| **Token** | jsonwebtoken | 最新 | JWT生成验证 |
+| **OAuth** | passport.js | 最新 | 第三方认证 |
+| **API文档** | Swagger/OpenAPI 3.0 | 3.0 | 接口规范 |
+| **容器化** | Docker + Docker Compose | 最新 | 开发/部署环境 |
+
+---
+
+## 2. 具体执行步骤
+
+### 阶段一：架构设计与基础设施
+
+**T1.1 技术栈确定**
+```
+输入：《执行分案》/ 技术选型会议纪要
+输出：technology_stack.md
+步骤：
+  1. [ ] 召开技术评审会，确定后端框架（Node.js/Express）
+  2. [ ] 确定数据库选型（PostgreSQL + Redis）
+  3. [ ] 确定安全库版本（bcrypt@12, argon2@3）
+  4. [ ] 输出《技术选型报告》
+  5. [ ] 输出《开发环境搭建指南》
+验收标准：技术选型文档完整，团队成员无异议
+```
+
+**T1.2 数据库设计**
+```sql
+-- 用户主表
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) UNIQUE,
+    password_hash VARCHAR(255),
+    auth_type VARCHAR(20) DEFAULT 'password', -- password/oauth/sms
+    oauth_provider VARCHAR(50),
+    oauth_id VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
+    email_verified BOOLEAN DEFAULT false,
+    phone_verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP
+);
+
+-- Token黑名单表
+CREATE TABLE token_blacklist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token_jti VARCHAR(255) UNIQUE NOT NULL,
+    revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    INDEX idx_token_jti (token_jti),
+    INDEX idx_expires_at (expires_at)
+);
+
+-- 登录日志表
+CREATE TABLE login_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    login_type VARCHAR(20) NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    device_info JSONB,
+    location JSONB,
+    status VARCHAR(20) DEFAULT 'success', -- success/failed
+    failure_reason VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 验证码表
+CREATE TABLE verification_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    code VARCHAR(10) NOT NULL,
+    type VARCHAR(20) NOT NULL, -- login/register/reset_password
+    used BOOLEAN DEFAULT false,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 用户安全设置表
+CREATE TABLE user_security_settings (
+    user_id UUID PRIMARY KEY REFERENCES users(id),
+    mfa_enabled BOOLEAN DEFAULT false,
+    mfa_secret VARCHAR(255),
+    trusted_devices JSONB DEFAULT '[]',
+    ip_whitelist JSONB DEFAULT '[]',
+    login_notification BOOLEAN DEFAULT true
+);
+```
+
+**T1.3 安全方案设计**
+```
+输入：安全需求文档
+输出：security_design.md
+步骤：
+  1. [ ] 设计密码加密方案（argon2 + salt）
+  2. [ ] 设计JWT Token策略
+     - Access Token: 15分钟有效期
+     - Refresh Token: 7天有效期，HttpOnly Cookie
+  3. [ ] 设计Token黑名单机制（Redis存储）
+  4. [ ] 设计CSRF防护策略
+  5. [ ] 设计限流策略
+     - 登录接口：5次/分钟/IP
+     - 注册接口：3次/小时/IP
+     - 验证码接口：5次/分钟/IP
+  6. [ ] 输出《安全设计方案》
+验收标准：符合OWASP Top 10防护要求
+```
+
+### 阶段二：核心认证功能开发
+
+**T2.1 用户注册模块**
+```
+API端点：POST /api/v1/auth/register
+
+输入参数：
+{
+  "username": "string[3-50]",
+  "email": "string[email]",
+  "password": "string[8-128, 必须包含大小写字母和数字]",
+  "captcha_token": "string[滑动验证码Token]"
+}
+
+处理流程：
+1. 验证滑动验证码
+2. 检查username/email唯一性
+3. 密码强度校验（正则匹配）
+4. 生成密码盐（bcrypt.genSalt(12)）
+5. 密码哈希（bcrypt.hash(password, salt)）
+6. 写入users表（auth_type='password'）
+7. 发送邮箱验证邮件（异步队列）
+8. 记录login_logs（type='register'）
+9. 返回用户基本信息（不含敏感信息）
+
+输出：
+{
+  "success": true,
+  "data": {
+    "user_id": "uuid",
+    "username": "string",
+    "email": "string

@@ -1,0 +1,9 @@
+{
+  "task_id": "test_20260412_195546",
+  "from": "human",
+  "to": "zhongshusheng",
+  "type": "command",
+  "content": "开发一个用户登录系统，包含用户名密码验证",
+  "timestamp": "2026-04-12T19:55:46.813980",
+  "priority": "high"
+}
