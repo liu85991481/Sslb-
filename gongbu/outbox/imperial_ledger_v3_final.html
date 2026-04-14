@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#8b4513">
+<title>皇家极简记账本</title>
+<link rel="manifest" href="manifest.json">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Microsoft YaHei", sans-serif; background: #f5f5dc; min-height: 100vh; padding: 20px; }
+.container { max-width: 600px; margin: 0 auto; }
+h1 { text-align: center; color: #8b4513; margin-bottom: 20px; font-size: 24px; }
+.card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.input-group { display: flex; gap: 10px; margin-bottom: 12px; }
+input[type="number"] { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; }
+input[type="text"] { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 16px; }
+button { padding: 12px 24px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; transition: 0.3s; }
+.btn-primary { background: #8b4513; color: #fff; }
+.btn-primary:hover { background: #6b3410; }
+.btn-secondary { background: #ddd; color: #333; }
+.btn-secondary:hover { background: #ccc; }
+.chart-container { position: relative; height: 200px; margin-top: 10px; }
+canvas { width: 100%; height: 100%; }
+.record-list { list-style: none; }
+.record-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+.record-item:last-child { border-bottom: none; }
+.record-amount { font-weight: bold; color: #8b4513; }
+.record-date { color: #666; font-size: 14px; }
+.record-note { color: #999; font-size: 14px; }
+.error { color: #e74c3c; font-size: 14px; margin-top: 5px; }
+.success { color: #27ae60; font-size: 14px; }
+.empty { text-align: center; color: #999; padding: 20px; }
+.actions { display: flex; gap: 10px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📜 皇家极简记账本</h1>
+  
+  <div class="card">
+    <h3 style="margin-bottom:12px;">记一笔</h3>
+    <div class="input-group">
+      <input type="number" id="amount" placeholder="金额（元）" step="0.01" min="0">
+      <input type="text" id="note" placeholder="备注（可选）">
+    </div>
+    <div id="error" class="error"></div>
+    <button class="btn-primary" onclick="addRecord()">提交</button>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px;">近三天趋势</h3>
+    <div class="chart-container">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:12px;">账单记录</h3>
+    <ul id="recordList" class="record-list"></ul>
+    <div class="actions">
+      <button class="btn-secondary" onclick="exportData()">导出备份</button>
+      <button class="btn-secondary" onclick="clearAll()">清空账单</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'imperial_ledger';
+const MAX_STORAGE = 5 * 1024 * 1024; // 5MB
+
+function getRecords() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch (e) { return []; }
+}
+
+function saveRecords(records) {
+  const data = JSON.stringify(records);
+  if (new Blob([data]).size > MAX_STORAGE) {
+    logToShangshusheng('error', '存储空间已满');
+    alert('存储空间已满，请导出后清空');
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY, data);
+  logToShangshusheng('info', '账单已保存');
+}
+
+function validateAmount(amount) {
+  if (isNaN(amount) || amount < 0) return '金额必须为正数';
+  const str = amount.toString();
+  const parts = str.split('.');
+  if (parts[0].length > 12) return '整数部分最多12位';
+  if (parts[1] && parts[1].length > 2) return '最多精确到分';
+  return null;
+}
+
+function addRecord() {
+  const amountInput = document.getElementById('amount');
+  const noteInput = document.getElementById('note');
+  const errorDiv = document.getElementById('error');
+  errorDiv.textContent = '';
+  
+  const amount = parseFloat(amountInput.value);
+  const error = validateAmount(amount);
+  if (error) { errorDiv.textContent = error; return; }
+  
+  const record = {
+    id: Date.now(),
+    amount: amount,
+    note: noteInput.value || '',
+    date: new Date().toISOString()
+  };
+  
+  const records = getRecords();
+  records.unshift(record);
+  saveRecords(records);
+  
+  amountInput.value = '';
+  noteInput.value = '';
+  renderRecords();
+  drawChart();
+}
+
+function renderRecords() {
+  const list = document.getElementById('recordList');
+  const records = getRecords();
+  if (records.length === 0) {
+    list.innerHTML = '<li class="empty">暂无账单记录</li>';
+    return;
+  }
+  list.innerHTML = records.slice(0, 50).map(r => `
+    <li class="record-item">
+      <div>
+        <div class="record-amount">¥${r.amount.toFixed(2)}</div>
+        <div class="record-date">${new Date(r.date).toLocaleString('zh-CN')}</div>
+      </div>
+      <div class="record-note">${r.note || '-'}</div>
+    </li>
+  `).join('');
+}
+
+function drawChart() {
+  const canvas = document.getElementById('trendChart');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  
+  const records = getRecords();
+  const days = [];
+  for (let i = 2; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    const total = records.filter(r => r.date.startsWith(key)).reduce((s, r) => s + r.amount, 0);
+    days.push({ date: key.slice(5), total });
+  }
+  
+  const maxVal = Math.max(...days.map(d => d.total), 1);
+  const w = canvas.width, h = canvas.height;
+  const pad = 40, stepX = (w - pad * 2) / (days.length - 1 || 1);
+  
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad + (h - 2 * pad) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+    ctx.fillStyle = '#666'; ctx.font = '12px sans-serif';
+    ctx.fillText((maxVal * (4 - i) / 4).toFixed(0), 5, y + 4);
+  }
+  
+  ctx.strokeStyle = '#8b4513'; ctx.lineWidth = 2; ctx.beginPath();
+  days.forEach((d, i) => {
+    const x = pad + i * stepX, y = pad + (h - 2 * pad) * (1 - d.total / maxVal);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  
+  ctx.fillStyle = '#8b4513'; ctx.font = '12px sans-serif';
+  days.forEach((d, i) => {
+    const x = pad + i * stepX;
+    ctx.fillText(d.date, x - 15, h - 10);
+    ctx.beginPath(); ctx.arc(x, pad + (h - 2 * pad) * (1 - d.total / maxVal), 4, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+function exportData() {
+  const data = JSON.stringify(getRecords(), null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ledger_${new Date().toISOString().split('T')[0]}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  logToShangshusheng('info', '数据已导出');
+}
+
+function clearAll() {
+  if (confirm('确定清空所有账单？')) {
+    localStorage.removeItem(STORAGE_KEY);
+    renderRecords(); drawChart();
+    logToShangshusheng('info', '账单已清空');
+  }
+}
+
+function logToShangshusheng(level, message) {
+  const log = { level, message, timestamp: new Date().toISOString(), agent: 'gongbu' };
+  console.log('[尚书省归档]', log);
+}
+
+renderRecords(); drawChart();
+</script>
+</body>
+</html>
